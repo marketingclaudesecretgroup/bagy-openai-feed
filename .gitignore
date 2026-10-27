@@ -1,0 +1,15 @@
+# Ambientes virtuais
+venv/
+.env
+__pycache__/
+*.pyc
+
+# Credenciais e segredos
+service_account.json
+credentials.json
+*.pem
+*.key
+
+# Arquivos temporários do sistema
+.DS_Store
+Thumbs.db

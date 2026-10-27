@@ -1,0 +1,31 @@
+name: Atualizar Feed OpenAI Automaticamente
+
+on:
+  schedule:
+    # Executa todos os dias às 03:00 UTC (00:00 Horário de Brasília)
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Permite disparar manualmente pelo botão no GitHub
+
+jobs:
+  update-feed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar código do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Executar Conversor de Feed
+        run: |
+          python convert_feed.py
+
+      - name: Commitar e salvar arquivos atualizados
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add openai_products_feed.csv openai_products_feed.jsonl
+          git commit -m "chore: feed atualizado automaticamente [skip ci]" || echo "Sem alterações"
+          git push
