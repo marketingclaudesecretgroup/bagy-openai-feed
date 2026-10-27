@@ -53,7 +53,7 @@ def prepare_event(order, source_url):
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError("Invalid timestamp") from exc
 
-    return {
+    event = {
         "id": "shopify_order_" + str(order["id"]),
         "type": "order_created",
         "timestamp_ms": timestamp_ms,
@@ -61,6 +61,13 @@ def prepare_event(order, source_url):
         "source_url": source_url,
         "data": {"type": "contents", "amount": cents, "currency": currency},
     }
+    attributes = order.get("note_attributes") or []
+    if isinstance(attributes, list):
+        for attr in attributes:
+            if isinstance(attr, dict) and attr.get("name") == "oppref" and isinstance(attr.get("value"), str) and attr["value"].strip():
+                event["oppref"] = attr["value"].strip()
+                break
+    return event
 
 
 def send_conversion(event, pixel_id, api_key, validate_only=False):
@@ -128,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, "delivered")
         except (ValueError, KeyError, json.JSONDecodeError):
             return self.respond(422, "invalid_order")
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError, sqlite3.Error) as exc:
             print("Delivery failed:", type(exc).__name__, flush=True)
             return self.respond(503, "retry_later")
 
