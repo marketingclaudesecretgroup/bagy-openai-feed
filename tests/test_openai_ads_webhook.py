@@ -10,6 +10,10 @@ class ConversionTests(unittest.TestCase):
         self.assertEqual(event['type'], 'order_created')
         self.assertEqual(event['data']['amount'], 39990)
 
+    def test_attribution(self):
+        event = prepare_event({'id': 42, 'total_price': '100.00', 'currency': 'BRL', 'processed_at': '2026-10-27T11:00:00-03:00', 'note_attributes': [{'name':'oppref','value':'example-click'}]}, 'https://www.secretoutlet.com.br/')
+        self.assertEqual(event['oppref'], 'example-click')
+
     def test_missing_id(self):
         with self.assertRaises(ValueError):
             prepare_event({'currency': 'BRL'}, 'https://www.secretoutlet.com.br/')
