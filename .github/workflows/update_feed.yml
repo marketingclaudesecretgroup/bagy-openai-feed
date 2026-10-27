@@ -9,6 +9,8 @@ on:
 jobs:
   update-feed:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Baixar código do repositório
         uses: actions/checkout@v4
