@@ -29,6 +29,20 @@ if sys.stdout.encoding != 'utf-8':
 FEED_URL_DEFAULT = "https://feeds.app.bagypro.com/946/t9VjVE4TP8MvDFbqrrStJP0817Naj2brA78B"
 DEFAULT_SELLER_NAME = "Secret Outlet"
 
+# Produtos a serem excluídos do feed (por título ou por ID de item)
+EXCLUDED_TITLES = [
+    "embalagem de papel para presente",
+    "sacola plástica embalagem para presente",
+    "sacola plastica embalagem para presente",
+    "embalagem para presente",
+]
+
+EXCLUDED_IDS = {
+    "5688398",   # Embalagem de papel para presente
+    "7494681",   # Sacola plástica Embalagem para presente
+    "30452879",  # Embalagem para presente - Caixa
+}
+
 def clean_html(raw_html: Optional[str]) -> str:
     """Remove tags HTML, entidades e normaliza espaços para texto puro (máx 5000 chars conforme spec da OpenAI)."""
     if not raw_html:
@@ -90,6 +104,11 @@ def process_item(item_elem: ET.Element, seller_name: str = DEFAULT_SELLER_NAME) 
 
     # Campos estritamente obrigatórios pela OpenAI
     if not item_id or not title or not url or not price:
+        return None
+
+    # Exclusão de produtos indesejados (por ID ou correspondência no título)
+    title_lower = title.strip().lower()
+    if item_id in EXCLUDED_IDS or any(exc in title_lower for exc in EXCLUDED_TITLES):
         return None
 
     # Validação de preço promocional (sale_price): deve ser estritamente menor que price e > 0
