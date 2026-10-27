@@ -10,6 +10,12 @@ credentials.json
 *.pem
 *.key
 
+# Dados de conversões locais
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
 # Arquivos temporários do sistema
 .DS_Store
 Thumbs.db
