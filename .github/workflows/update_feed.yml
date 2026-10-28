@@ -28,6 +28,6 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add openai_products_feed.csv openai_products_feed.jsonl
+          git add openai_products_feed.csv openai_products_feed.jsonl openai_lacoste_pima_feed.csv openai_lacoste_pima_feed.jsonl
           git commit -m "chore: feed atualizado automaticamente [skip ci]" || echo "Sem alterações"
           git push

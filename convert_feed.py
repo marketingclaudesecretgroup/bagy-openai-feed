@@ -43,6 +43,23 @@ EXCLUDED_IDS = {
     "30452879",  # Embalagem para presente - Caixa
 }
 
+# Configuração do Feed Curado Lacoste Pima
+LACOSTE_PIMA_URLS = [
+    "https://www.secretoutlet.com.br/camiseta-lacoste-masculina-classic-pima-cotton-logo-preta",
+    "https://www.secretoutlet.com.br/camiseta-lacoste-masculina-classic-pima-cotton-logo-rosa-claro",
+    "https://www.secretoutlet.com.br/camiseta-lacoste-masculina-jersey-pima-cotton-azul-marinho",
+    "https://www.secretoutlet.com.br/camiseta-lacoste-masculina-jersey-pima-cotton-azul-claro",
+    "https://www.secretoutlet.com.br/camiseta-lacoste-masculina-jersey-pima-cotton-branca",
+]
+
+LACOSTE_PIMA_GROUP_IDS = {
+    "1612127",  # Camiseta Lacoste Masculina Jersey Pima Cotton Branca
+    "1612136",  # Camiseta Lacoste Masculina Jersey Pima Cotton Azul Marinho
+    "2535303",  # Camiseta Lacoste Masculina Jersey Pima Cotton Rosa Claro
+    "2641687",  # Camiseta Lacoste Masculina Classic Pima Cotton Logo Preta
+    "6428667",  # Camiseta Lacoste Masculina Jersey Pima Cotton Azul Claro
+}
+
 def clean_html(raw_html: Optional[str]) -> str:
     """Remove tags HTML, entidades e normaliza espaços para texto puro (máx 5000 chars conforme spec da OpenAI)."""
     if not raw_html:
@@ -188,6 +205,31 @@ def process_item(item_elem: ET.Element, seller_name: str = DEFAULT_SELLER_NAME) 
 
     return record
 
+def save_feed_files(records: List[Dict[str, Any]], csv_path: str, jsonl_path: str):
+    """Exporta lista de registros para CSV e JSONL (padrão OpenAI Commerce)."""
+    if records:
+        fieldnames = list(records[0].keys())
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL)
+            writer.writeheader()
+            writer.writerows(records)
+
+    with open(jsonl_path, "w", encoding="utf-8") as f:
+        for r in records:
+            clean_r = dict(r)
+            clean_r["listing_has_variations"] = (clean_r["listing_has_variations"] == "true")
+            if clean_r.get("variant_dict"):
+                clean_r["variant_dict"] = json.loads(clean_r["variant_dict"])
+            else:
+                clean_r.pop("variant_dict", None)
+            if clean_r.get("additional_image_urls"):
+                clean_r["additional_image_urls"] = json.loads(clean_r["additional_image_urls"])
+            else:
+                clean_r.pop("additional_image_urls", None)
+
+            compact_r = {k: v for k, v in clean_r.items() if v not in ("", None, [])}
+            f.write(json.dumps(compact_r, ensure_ascii=False) + "\n")
+
 def update_google_sheets(records: List[Dict[str, Any]], spreadsheet_id: str, credentials_path: str = "service_account.json"):
     """Atualiza a planilha do Google Sheets via API oficial usando gspread."""
     try:
@@ -209,7 +251,7 @@ def update_google_sheets(records: List[Dict[str, Any]], spreadsheet_id: str, cre
 
         print(f"[*] Enviando {len(records)} linhas para o Google Sheets em lotes...")
         worksheet.clear()
-        
+
         # Envia em lotes de 5000 linhas para evitar timeout de socket da API do Google
         batch_size = 5000
         for i in range(0, len(values), batch_size):
@@ -227,6 +269,8 @@ def run_pipeline(
     seller_name: str = DEFAULT_SELLER_NAME,
     csv_output_path: str = "openai_products_feed.csv",
     jsonl_output_path: str = "openai_products_feed.jsonl",
+    lacoste_csv_path: str = "openai_lacoste_pima_feed.csv",
+    lacoste_jsonl_path: str = "openai_lacoste_pima_feed.jsonl",
     max_items: Optional[int] = None,
     sheets_id: Optional[str] = None,
     sheets_creds: str = "service_account.json"
@@ -234,14 +278,14 @@ def run_pipeline(
     print(f"[*] Baixando feed XML de {feed_url} ...")
     start_time = time.time()
     req = urllib.request.Request(feed_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-    
+
     with urllib.request.urlopen(req) as resp:
         print("[*] Processando estrutura XML por streaming ...")
         context = ET.iterparse(resp, events=("end",))
-        
+
         records = []
         count = 0
-        
+
         for event, elem in context:
             if elem.tag.endswith("item"):
                 rec = process_item(elem, seller_name=seller_name)
@@ -257,38 +301,23 @@ def run_pipeline(
     download_and_parse_time = time.time() - start_time
     print(f"[OK] {len(records)} itens processados com sucesso em {download_and_parse_time:.2f}s!")
 
-    # 1. Exporta CSV (perfeito para upload na OpenAI ou importar no Google Sheets)
-    print(f"[*] Exportando para CSV: {csv_output_path} ...")
-    if records:
-        fieldnames = list(records[0].keys())
-        with open(csv_output_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL)
-            writer.writeheader()
-            writer.writerows(records)
+    # 1. Exporta Feed Geral
+    print(f"[*] Exportando Feed Geral ({len(records)} itens) para CSV ({csv_output_path}) e JSONL ({jsonl_output_path}) ...")
+    save_feed_files(records, csv_output_path, jsonl_output_path)
 
-    # 2. Exporta JSONL (formato recomendado pela OpenAI para File Upload)
-    print(f"[*] Exportando para JSONL: {jsonl_output_path} ...")
-    with open(jsonl_output_path, "w", encoding="utf-8") as f:
-        for r in records:
-            clean_r = dict(r)
-            clean_r["listing_has_variations"] = (clean_r["listing_has_variations"] == "true")
-            if clean_r["variant_dict"]:
-                clean_r["variant_dict"] = json.loads(clean_r["variant_dict"])
-            else:
-                clean_r.pop("variant_dict", None)
-            if clean_r["additional_image_urls"]:
-                clean_r["additional_image_urls"] = json.loads(clean_r["additional_image_urls"])
-            else:
-                clean_r.pop("additional_image_urls", None)
-            
-            compact_r = {k: v for k, v in clean_r.items() if v not in ("", None, [])}
-            f.write(json.dumps(compact_r, ensure_ascii=False) + "\n")
+    # 2. Exporta Feed Curado Lacoste Pima
+    lacoste_records = [
+        r for r in records
+        if r.get("group_id") in LACOSTE_PIMA_GROUP_IDS or any(u in r.get("url", "") for u in LACOSTE_PIMA_URLS)
+    ]
+    print(f"[*] Exportando Feed Lacoste Pima ({len(lacoste_records)} variações) para CSV ({lacoste_csv_path}) e JSONL ({lacoste_jsonl_path}) ...")
+    save_feed_files(lacoste_records, lacoste_csv_path, lacoste_jsonl_path)
 
     total_time = time.time() - start_time
     print(f"[OK] Concluido em {total_time:.2f} segundos!")
     print(f"Arquivos gerados:")
-    print(f" - CSV:   {csv_output_path}")
-    print(f" - JSONL: {jsonl_output_path}")
+    print(f" - Feed Geral:         {csv_output_path} | {jsonl_output_path}")
+    print(f" - Feed Lacoste Pima:  {lacoste_csv_path} | {lacoste_jsonl_path}")
 
     # 3. Opcional: Atualizar Google Sheets diretamente via API
     if sheets_id:
