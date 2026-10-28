@@ -2,14 +2,59 @@
 
 Does NOT assume that order creation means payment. Works from the Bagy API
 /orders result and requires explicit confirmed payment indicators.
+Includes SHA-256 hashed user matching data (email_sha256, external_id_sha256, phone_number_sha256)
+to satisfy OpenAI Ads measurement pixel and Conversions API user coverage requirements:
+https://developers.openai.com/ads/measurement-pixel#send-user-data
 """
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
+import re
 import urllib.parse
 import urllib.request
 from decimal import Decimal, ROUND_HALF_UP
+
+def normalize_and_hash_email(email):
+    """Normaliza e gera hash SHA-256 do e-mail conforme spec da OpenAI:
+    - Remove espaços nas extremidades (strip)
+    - Converte para minúsculas (lower)
+    - Codifica em UTF-8
+    - Retorna digest hexadecimal de 64 caracteres em minúsculas
+    """
+    if not email or not isinstance(email, str):
+        return None
+    clean = email.strip().lower()
+    if "@" in clean and "." in clean:
+        return hashlib.sha256(clean.encode("utf-8")).hexdigest().lower()
+    return None
+
+def normalize_and_hash_external_id(cust_id):
+    """Normaliza e gera hash SHA-256 do ID de cliente externo:
+    - Remove espaços nas extremidades (strip)
+    - Preserva caracteres originais
+    - Codifica em UTF-8
+    - Retorna digest hexadecimal de 64 caracteres em minúsculas
+    """
+    if cust_id is None:
+        return None
+    clean = str(cust_id).strip()
+    if clean:
+        return hashlib.sha256(clean.encode("utf-8")).hexdigest().lower()
+    return None
+
+def normalize_and_hash_phone(phone):
+    """Normaliza telefone para formato internacional E.164 (+55...) e gera hash SHA-256."""
+    if not phone:
+        return None
+    digits = re.sub(r'[^0-9]', '', str(phone).strip())
+    if not digits:
+        return None
+    if not digits.startswith("55") and len(digits) in (10, 11):
+        digits = "55" + digits
+    e164 = "+" + digits
+    return hashlib.sha256(e164.encode("utf-8")).hexdigest().lower()
 
 def confirmed(order):
     value = order.get("has_payment")
@@ -53,6 +98,31 @@ def convert(order, now=None):
             "currency": "BRL",
         },
     }
+
+    # Dados do usuário para correspondência avançada (User Match Data)
+    user = {}
+    cust = order.get("Customer") or order.get("customer") or {}
+    if not isinstance(cust, dict):
+        cust = {}
+
+    email = cust.get("email") or order.get("customer_email") or order.get("email")
+    email_hash = normalize_and_hash_email(email)
+    if email_hash:
+        user["email_sha256"] = email_hash
+
+    cust_id = cust.get("id") or order.get("customer_id")
+    cust_id_hash = normalize_and_hash_external_id(cust_id)
+    if cust_id_hash:
+        user["external_id_sha256"] = cust_id_hash
+
+    phone = cust.get("phone") or cust.get("cellphone") or order.get("customer_phone") or order.get("phone")
+    phone_hash = normalize_and_hash_phone(phone)
+    if phone_hash:
+        user["phone_number_sha256"] = phone_hash
+
+    if user:
+        event["user"] = user
+
     if isinstance(order.get("oppref"), str) and order["oppref"].strip():
         event["oppref"] = order["oppref"].strip()
     return event
