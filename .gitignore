@@ -9,6 +9,8 @@ service_account.json
 credentials.json
 *.pem
 *.key
+audiences/
+process_audience.py
 
 # Arquivos temporários do sistema
 .DS_Store
